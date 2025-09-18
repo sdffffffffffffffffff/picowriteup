@@ -1,0 +1,38 @@
+Here’s the distilled breakdown of that PicoCTF 2025 “3v@l” challenge write‑up—it’s a neat little case study in bypassing naive Python `eval()` filters.  
+
+---
+
+ 🕵️ My Take on What’s Going On
+The challenge is a **Flask** web app loan calculator that directly `eval()`s user input. Two layers of defense are in place:  
+
+1. **Keyword blacklist** — blocks `os`, `eval`, `exec`, `bind`, `connect`, `python`, `socket`, `ls`, `cat`, `shell`, etc.  
+2. **Regex filter** — blocks hex escapes, Unicode escapes, percent encoding, certain dot patterns, `/`, and `..`.  
+
+The goal: **Read `/flag.txt`** despite these restrictions.
+
+---
+
+ 🔓 Exploitation Flow
+- **Direct `os` calls not needed** — Python’s built‑in `open()` can read files.
+- **Problem**: `/` is blocked by regex.
+- **Solution**: Build the string dynamically using `chr()` to avoid literal `/` and other blocked characters.
+    - `/` → `chr(47)`
+    - `flag.txt` → `chr(102) + chr(108) + chr(97) + chr(103) + chr(46) + chr(116) + chr(120) + chr(116)`
+- **Final payload**:
+  ```python
+  open(chr(47)+chr(102)+chr(108)+chr(97)+chr(103)+chr(46)+chr(116)+chr(120)+chr(116)).read()
+  ```
+- Sent via POST to `/execute`, it returns the flag.
+
+---
+
+🛠 Key Lessons
+- **`chr()` + concatenation** is a simple but powerful filter bypass when direct characters are blocked.
+- You don’t always need `os` or subprocess calls for file reads in Python RCE.
+- Regex filters that operate before `eval()` but after parsing can be sidestepped with runtime‑built strings.
+
+---
+
+Given your background in SSTI and RCE bypasses, this is basically a textbook example of **dynamic payload construction**—and the same `chr()` trick could be adapted for sandbox escapes or Jinja2 filter evasion in your lab setups.  
+
+If you want, I can walk you through **automating a payload generator** for this kind of filter so you can drop it into your CTF toolkit. Would you like me to do that?
