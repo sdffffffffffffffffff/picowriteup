@@ -1,0 +1,72 @@
+Got it — let’s unpack why that payload works, step by step, because it’s a textbook **Jinja2 Server-Side Template Injection (SSTI) sandbox escape** with filter bypasses.
+
+---
+
+## 🧠 My thought process
+You’re describing a situation where the template engine (Jinja2) is rendering user input, but the challenge author tried to block “dangerous” characters like `_`, `.`, and `..`. You’ve used **hex-encoded underscores** (`\x5f`) and the `attr` filter instead of dot notation to rebuild the object chain. This is a known bypass pattern from HackTricks and other SSTI write-ups.
+
+---
+
+## 🔍 Step-by-step breakdown of the payload
+
+Your payload:
+```jinja2
+{{ request
+   |attr('application')
+   |attr('\x5f\x5fglobals\x5f\x5f')
+   |attr('\x5f\x5fgetitem\x5f\x5f')('\x5f\x5fbuiltins\x5f\x5f')
+   |attr('\x5f\x5fgetitem\x5f\x5f')('\x5f\x5fimport\x5f\x5f')('os')
+   |attr('popen')('cat flag')
+   |attr('read')()
+}}
+```
+
+### 1. `request|attr('application')`
+- In Flask/Jinja2, the `request` object has an `application` attribute pointing to the Flask app instance.
+- This is your entry point into the server’s Python environment.
+
+### 2. `|attr('\x5f\x5fglobals\x5f\x5f')`
+- `\x5f` is `_` in hex, so `\x5f\x5fglobals\x5f\x5f` = `__globals__`.
+- This accesses the global variables dictionary of the function object you’ve reached.
+- **Bypassing filters:** If `_` is blocked, hex encoding slips past naive filters.
+
+### 3. `|attr('\x5f\x5fgetitem\x5f\x5f')('\x5f\x5fbuiltins\x5f\x5f')`
+- `__getitem__` lets you index into a dict without using `[...]` syntax.
+- You grab `__builtins__`, which contains Python’s built-in functions and classes.
+
+### 4. `|attr('\x5f\x5fgetitem\x5f\x5f')('\x5f\x5fimport\x5f\x5f')('os')`
+- From `__builtins__`, you fetch the `__import__` function.
+- You call it with `'os'` to import the `os` module.
+
+### 5. `|attr('popen')('cat flag')`
+- From the `os` module, you get the `popen` function.
+- You run `cat flag` in a shell to read the flag file.
+
+### 6. `|attr('read')()`
+- You call `.read()` on the file-like object returned by `popen` to get the command output.
+- The template engine renders that output directly into the HTTP response.
+
+---
+
+## 🛡 Why the bypass works
+- **Filter evasion:**  
+  - `_` → `\x5f` (hex encoding)  
+  - `.` → `|attr('...')` instead of dot notation
+- **Sandbox escape:**  
+  - Start from a safe object (`request`)  
+  - Walk to the Flask app → function globals → builtins → `__import__`  
+  - Import `os` and execute arbitrary commands
+- **No direct blacklisted strings:**  
+  - You never literally type `__globals__` or `__import__` — you build them dynamically.
+
+---
+
+## 📌 Key takeaway
+This works because Jinja2’s template context still exposes powerful Python objects, and even with character filters, you can:
+1. Encode blocked characters
+2. Use alternative attribute access methods
+3. Chain from a harmless object to full Python execution
+
+---
+
+If you want, I can also show you **a minimal “safe” Jinja2 config** that would block this exact attack chain, so you can understand how CTF authors (or real-world devs) could prevent it. Would you like me to do that next?
